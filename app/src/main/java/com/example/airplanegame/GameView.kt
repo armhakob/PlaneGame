@@ -1,18 +1,25 @@
 package com.example.airplanegame
 
+import android.animation.AnimatorSet
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.os.Handler
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.view.animation.LinearInterpolator
+import androidx.core.animation.addListener
 import kotlin.random.Random
 
-class GameView @JvmOverloads constructor(context: Context, attributeSet: AttributeSet? = null, defStyleAttr: Int = 0) : View(context, attributeSet, defStyleAttr) {
+class GameView @JvmOverloads constructor(context: Context, attributeSet: AttributeSet? = null, defStyleAttr: Int = 0) : View(context, attributeSet, defStyleAttr) { //SensorEventListener
     private var gameListener: GameListener? = null
 
     private val desiredWidth = 250
@@ -48,17 +55,21 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
 
     private var redBlueCollisionCount = 0
     private var blackBulletCollisionCount = 0
+    private val sensorManager: SensorManager =
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-    private val handler = Handler()
+
     private val runnable = object : Runnable {
         override fun run() {
+            println("#art:::::heeellllll")
             triggerTopAnimation()
-            handler.postDelayed(this, 10000)
+            postDelayed(this, 5000)
         }
     }
 
     init {
-        handler.postDelayed(runnable, 10000)
+        postDelayed(runnable, 5000)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -67,8 +78,9 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
         canvas.drawBitmap(topLeftBitmap, 0f, 0f, paint)
         canvas.drawBitmap(topRightBitmap, width - topRightBitmap.width.toFloat(), 0f, paint)
 
-        updateAndDrawBullets(canvas)
         updateAndDrawTopBullets(canvas)
+        updateAndDrawBullets(canvas)
+        // move to animator for each bullet
         checkCollisions()
     }
 
@@ -76,13 +88,8 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
         val iterator = bullets.iterator()
         while (iterator.hasNext()) {
             val bullet = iterator.next()
-            bullet.y -= bullet.speed
-            if (bullet.y + bulletSpeed < 0) {
-                iterator.remove()
-            } else {
-                paint.color = Color.BLACK
-                canvas.drawCircle(bullet.x, bullet.y, 10f, paint)
-            }
+            paint.color = Color.BLACK
+            canvas.drawCircle(bullet.x, bullet.y, 10f, paint)
         }
     }
 
@@ -90,13 +97,8 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
         val iterator = topBullets.iterator()
         while (iterator.hasNext()) {
             val bullet = iterator.next()
-            bullet.y += bullet.speed
-            if (bullet.y - bulletRadius > height) {
-                iterator.remove()
-            } else {
-                paint.color = bullet.color
-                canvas.drawCircle(bullet.x, bullet.y, bulletRadius, paint)
-            }
+            paint.color = bullet.color
+            canvas.drawCircle(bullet.x, bullet.y, bulletRadius, paint)
         }
     }
 
@@ -148,7 +150,9 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
                     movableBitmapDragging = true
                     lastTouchX = event.x
                     lastTouchY = event.y
-                    createBullet()
+//                    createBullet()
+                    startBitmapAnimation()
+//                    invalidate()
                     return true
                 }
             }
@@ -165,13 +169,12 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
                 movableBitmapDragging = false
                 return true
             }
-            MotionEvent.ACTION_DOWN -> {
-                if (!movableBitmapDragging) {
-                    createBullet()
-                    invalidate()
-                    return true
-                }
-            }
+//            MotionEvent.ACTION_DOWN -> {
+//                if (!movableBitmapDragging) {
+//                    createBullet()
+//                    return true
+//                }
+//            }
         }
         return super.onTouchEvent(event)
     }
@@ -201,16 +204,97 @@ class GameView @JvmOverloads constructor(context: Context, attributeSet: Attribu
         val bullet2 = Bullet(randomX2.toFloat(), 0f, bulletTopSpeed, bulletColor2)
         topBullets.add(bullet1)
         topBullets.add(bullet2)
-        invalidate()
+
+
+        val animator = ValueAnimator.ofFloat(0f, h)
+        animator.duration = 3000
+        animator.interpolator = LinearInterpolator()
+        animator.addUpdateListener { animation ->
+            val animatedValue = animation.animatedValue as Float
+            // update bullet position
+            bullet1.y = animatedValue
+            invalidate()
+        }
+        animator.addListener(onEnd = {
+            topBullets.remove(bullet1)
+            invalidate()
+        })
+        animator.start()
+//
+        val animator2 = ValueAnimator.ofFloat(0f, h)
+        animator2.duration = 3000
+        animator2.interpolator = LinearInterpolator()
+        animator2.addUpdateListener { animation ->
+            val animatedValue = animation.animatedValue as Float
+            // update bullet position
+            bullet2.y = animatedValue
+            invalidate()
+        }
+        animator2.addListener(onEnd = {
+            topBullets.remove(bullet2)
+            invalidate()
+        })
+        animator2.start()
+
     }
 
     fun setGameListener(listener: GameListener) {
         gameListener = listener
     }
 
+    private fun startBitmapAnimation() {
+        val bulletX = movableBitmapX + movableBitmap.width / 2
+        val bulletY = movableBitmapY
+        val bullet = Bullet(bulletX, bulletY, bulletSpeed, Color.BLACK)
+        bullets.add(bullet)
+
+        val animator = ValueAnimator.ofFloat(h, 0f)
+        animator.duration = 3000
+        animator.interpolator = LinearInterpolator()
+        animator.addUpdateListener { animation ->
+            val animatedValue = animation.animatedValue as Float
+            bullet.y = animatedValue
+            invalidate()
+        }
+        animator.addListener(onEnd = {
+            bullets.remove(bullet)
+            invalidate()
+        })
+        animator.start()
+    }
+
+    /*
+   override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+       // Do nothing
+   }
+
+   override fun onAttachedToWindow() {
+       super.onAttachedToWindow()
+       accelerometer?.let {
+           sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+       }
+       handler.postDelayed(runnable, 5000)
+   }
+
+   override fun onSensorChanged(event: SensorEvent) {
+       if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+           val x = event.values[0]
+           Log.d("GameView", "Accelerometer x: $x")
+           moveMovableBitmap(-x * 5)
+       }
+   }
+
+   override fun onDetachedFromWindow() {
+       super.onDetachedFromWindow()
+       sensorManager.unregisterListener(this)
+       handler.removeCallbacks(runnable)
+   }
+    */
+
     data class Bullet(var x: Float, var y: Float, val speed: Float, val color: Int)
 
     interface GameListener {
         fun onGameEnd(won: Boolean)
     }
+
 }
